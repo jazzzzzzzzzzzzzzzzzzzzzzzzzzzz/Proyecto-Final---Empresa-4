@@ -1,0 +1,194 @@
+==========================================
+SERVIDOR SANTIANGO
+ ==========================================
+ 1. CONFIGURACIÓN DE RED (VLAN 80)
+ ==========================================
+# Asignar IP, levantar interfaz y crear ruta por defecto
+ip addr flush dev eth1
+ip addr add 10.128.3.148/28 dev eth1
+ip link set eth1 up
+ip route add default via 10.128.3.145
+
+# Configurar DNS temporal para salida a Internet
+echo "nameserver 8.8.8.8" > /etc/resolv.conf
+echo "nameserver 4.0.0.5" >> /etc/resolv.conf
+
+ ==========================================
+ 2. CORRECCIÓN DE REPOSITORIOS Y ACTUALIZACIÓN
+ ==========================================
+# Inyectar repositorios limpios y activos de Ubuntu Jammy
+cat <<EOF > /etc/apt/sources.list
+deb http://archive.ubuntu.com/ubuntu/ jammy main restricted universe multiverse
+deb http://archive.ubuntu.com/ubuntu/ jammy-updates main restricted universe multiverse
+deb http://security.ubuntu.com/ubuntu/ jammy-security main restricted universe multiverse
+EOF
+
+# Eliminar repositorios de terceros que causan error
+rm -rf /etc/apt/sources.list.d/*
+
+# Actualizar la lista de paquetes
+apt-get update
+
+ ==========================================
+ 3. INSTALACIÓN Y CONFIGURACIÓN DE DHCP
+==========================================
+# Instalar el servidor DHCP
+apt-get install isc-dhcp-server -y
+
+# Indicar que el servicio escuche por la interfaz eth1
+sed -i 's/INTERFACESv4=""/INTERFACESv4="eth1"/g' /etc/default/isc-dhcp-server
+
+# Crear el archivo de configuración con todas las subredes
+cat <<EOF > /etc/dhcp/dhcpd.conf
+# Declaración de la red local del servidor (VLAN 80) obligatoria
+subnet 10.128.3.144 netmask 255.255.255.240 {
+}
+
+# VLAN 50 - Centro de Datos
+subnet 10.128.3.96 netmask 255.255.255.240 {
+    range 10.128.3.98 10.128.3.110;
+    option routers 10.128.3.97;
+    option domain-name-servers 10.128.3.148;
+    option domain-name "NEXIUM.com.do";
+}
+
+# VLAN 60 - Ventas
+subnet 10.128.3.64 netmask 255.255.255.224 {
+    range 10.128.3.66 10.128.3.94;
+    option routers 10.128.3.65;
+    option domain-name-servers 10.128.3.148;
+    option domain-name "NEXIUM.com.do";
+}
+
+# VLAN 70 - Administración
+subnet 10.128.3.128 netmask 255.255.255.240 {
+    range 10.128.3.130 10.128.3.142;
+    option routers 10.128.3.129;
+    option domain-name-servers 10.128.3.148;
+    option domain-name "NEXIUM.com.do";
+}
+EOF
+
+==========================================
+ 4. APLICAR CAMBIOS
+ ==========================================
+# Reiniciar el servicio para aplicar los nuevos rangos y verificar estado
+service isc-dhcp-server restart
+service isc-dhcp-server status
+
+
+
+*****************************************************************************************
+
+# ==========================================
+# 1. CONFIGURACIÓN DE RED (VLAN 80)
+# ==========================================
+ip addr flush dev eth1
+ip addr add 10.128.3.148/28 dev eth1
+ip link set eth1 up
+ip route add default via 10.128.3.145
+
+# Configurar DNS local y respaldo
+echo "nameserver 127.0.0.1" > /etc/resolv.conf
+echo "nameserver 8.8.8.8" >> /etc/resolv.conf
+
+# ==========================================
+# 2. REPOSITORIOS Y ACTUALIZACIÓN
+# ==========================================
+cat <<EOF > /etc/apt/sources.list
+deb http://archive.ubuntu.com/ubuntu/ jammy main restricted universe multiverse
+deb http://archive.ubuntu.com/ubuntu/ jammy-updates main restricted universe multiverse
+deb http://security.ubuntu.com/ubuntu/ jammy-security main restricted universe multiverse
+EOF
+
+rm -rf /etc/apt/sources.list.d/*
+apt-get update
+
+# ==========================================
+# 3. INSTALACIÓN DE SERVICIOS
+# ==========================================
+apt-get install isc-dhcp-server bind9 apache2 -y
+
+# ==========================================
+# 4. CONFIGURACIÓN DEL SERVIDOR DHCP
+# ==========================================
+sed -i 's/INTERFACESv4=""/INTERFACESv4="eth1"/g' /etc/default/isc-dhcp-server
+
+cat <<EOF > /etc/dhcp/dhcpd.conf
+# Declaración de la red local del servidor (VLAN 80)
+subnet 10.128.3.144 netmask 255.255.255.240 {
+}
+
+# VLAN 50 - Centro de Datos
+subnet 10.128.3.96 netmask 255.255.255.240 {
+    range 10.128.3.98 10.128.3.110;
+    option routers 10.128.3.97;
+    option domain-name-servers 10.128.3.148;
+    option domain-name "NEXIUM.com.do";
+}
+
+# VLAN 60 - Ventas
+subnet 10.128.3.64 netmask 255.255.255.224 {
+    range 10.128.3.66 10.128.3.94;
+    option routers 10.128.3.65;
+    option domain-name-servers 10.128.3.148;
+    option domain-name "NEXIUM.com.do";
+}
+
+# VLAN 70 - Administración
+subnet 10.128.3.128 netmask 255.255.255.240 {
+    range 10.128.3.130 10.128.3.142;
+    option routers 10.128.3.129;
+    option domain-name-servers 10.128.3.148;
+    option domain-name "NEXIUM.com.do";
+}
+EOF
+
+ ==========================================
+ 5. CONFIGURACIÓN DEL DNS (BIND9)
+ ==========================================
+cat <<EOF >> /etc/bind/named.conf.local
+zone "nexium.com.do" {
+    type master;
+    file "/etc/bind/db.nexium.com.do";
+};
+EOF
+
+cat <<EOF > /etc/bind/db.nexium.com.do
+\$TTL    604800
+@       IN      SOA     nexium.com.do. admin.nexium.com.do. (
+                              2         ; Serial
+                         604800         ; Refresh
+                          86400         ; Retry
+                        2419200         ; Expire
+                         604800 )       ; Negative Cache TTL
+;
+@       IN      NS      ns.nexium.com.do.
+ns      IN      A       10.128.3.148
+@       IN      A       10.128.3.148
+www     IN      A       10.128.3.148
+EOF
+
+==========================================
+ 6. CONFIGURACIÓN DEL SERVIDOR WEB (APACHE)
+#==========================================
+cat <<EOF > /var/www/html/index.html
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>NEXIUM</title>
+</head>
+<body style="font-family: Arial; text-align: center; margin-top: 50px;">
+    <h1>Bienvenido a la Intranet de NEXIUM</h1>
+    <p>Servidor Web y DNS configurados exitosamente.</p>
+</body>
+</html>
+EOF
+
+==========================================
+7. INICIAR Y REINICIAR SERVICIOS
+==========================================
+service isc-dhcp-server restart
+named
+service apache2 restart

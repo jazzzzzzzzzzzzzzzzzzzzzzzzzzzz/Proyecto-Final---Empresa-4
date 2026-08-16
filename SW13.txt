@@ -1,0 +1,75 @@
+SW13
+configure terminal
+no ip domain-lookup
+hostname SW13
+enable secret PRODUCTO
+username admin privilege 15 secret PRODUCTO
+ip domain-name NEXIUM.COM
+crypto key generate rsa modulus 1024
+ip ssh version 2
+line vty 0 4
+ login local
+ transport input ssh
+exit
+line con 0
+ login local
+exit
+vlan 130
+ name GESTION
+exit
+
+! Configurar los puertos e0/0 y e0/1 como Troncales desde SW12
+interface range Ethernet0/0-1
+ description ENLACES REDUNDANTES DESDE SW12
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ switchport trunk allowed vlan 130
+ no shutdown
+exit
+
+! Configurar los puertos e0/2 y e0/3 como Acceso para las VPCs
+interface range Ethernet0/2-3
+ description PUERTOS DE ACCESO PARA HOSTS
+ switchport mode access
+ switchport access vlan 130
+ spanning-tree portfast
+ no shutdown
+exit
+
+! Interfaz de Gestión
+interface Vlan130
+ description GESTION
+ ip address 10.128.3.171 255.255.255.248
+ no shutdown
+exit
+ip default-gateway 10.128.3.169
+
+configure terminal
+========================================================
+PROTECCIÓN CONTRA ATAQUES DHCP Y ARP (Global)
+ip dhcp snooping vlan 130
+ip dhcp snooping
+no ip dhcp snooping information option
+ip arp inspection vlan 130
+
+ ========================================================
+PUERTOS (Hacia SW12)
+interface range Ethernet0/0-1
+ ip dhcp snooping trust
+ ip arp inspection trust
+exit
+========================================================
+PROTECCIÓN EN LOS PUERTOS DE COMPUTADORAS (VPC31 y VPC32)
+interface range Ethernet0/2-3
+ ! Evitar ataques de VLAN Hopping
+ switchport mode access
+ switchport nonegotiate
+ ! Evitar ataques de STP 
+ spanning-tree bpduguard enable
+ 
+ ! Seguridad de Puertos (Control de Acceso)
+ switchport port-security
+ switchport port-security maximum 2
+ switchport port-security mac-address sticky
+ switchport port-security violation restrict
+exit

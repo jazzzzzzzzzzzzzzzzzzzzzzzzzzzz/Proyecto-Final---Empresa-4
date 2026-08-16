@@ -1,0 +1,179 @@
+ROUTER SANTIAGO
+
+enable
+configure terminal
+no ip domain-lookup
+hostname SANTIAGO
+enable secret PRODUCTO
+username admin privilege 15 secret PRODUCTO
+ip domain-name NEXIUM.COM
+crypto key generate rsa modulus 1024
+ip ssh version 2
+line vty 0 4
+ login local
+ transport input ssh
+exit
+line con 0
+ login local
+exit
+
+! Enlace WAN hacia el ISP (Puerto e0/0)
+interface Ethernet0/0
+ description ENLACE WAN HACIA ISP
+ ip address 4.0.0.6 255.255.255.252
+ no shutdown
+exit
+
+configure terminal
+
+! Encender la interfaz física principal que baja a SW6
+interface Ethernet0/1
+ description TRONCAL HACIA SW6
+ no shutdown
+exit
+
+! Subinterfaz VLAN 50 - Centro de Datos
+interface Ethernet0/1.50
+ description VLAN 50 - Centro de Datos
+ encapsulation dot1Q 50
+ ip address 10.128.3.97 255.255.255.240
+exit
+
+! Subinterfaz VLAN 60 - Ventas
+interface Ethernet0/1.60
+ description VLAN 60 - Ventas
+ encapsulation dot1Q 60
+ ip address 10.128.3.65 255.255.255.224
+! Subinterfaz VLAN 70 - Administración
+interface Ethernet0/1.70
+ description VLAN 70 - Administracion
+ encapsulation dot1Q 70
+ ip address 10.128.3.129 255.255.255.240
+exit
+
+! Subinterfaz VLAN 80 - Servidores (Gestión)[cite: 1]
+interface Ethernet0/1.80
+ description VLAN 80 - Servidores
+ encapsulation dot1Q 80
+ ip address 10.128.3.145 255.255.255.240
+exit
+
+configure terminal
+! 1. Ruta estática por defecto hacia el ISP (La IP del proveedor es 4.0.0.5)
+ip route 0.0.0.0 0.0.0.0 4.0.0.5
+
+! 2. Crear ACL para permitir que las subredes de Santiago usen el NAT
+access-list 1 permit 10.128.3.64 0.0.0.31   ! VLAN 60 - Ventas
+access-list 1 permit 10.128.3.96 0.0.0.15   ! VLAN 50 - Centro de Datos
+access-list 1 permit 10.128.3.128 0.0.0.15  ! VLAN 70 - Administración
+access-list 1 permit 10.128.3.144 0.0.0.15  ! VLAN 80 - Servidores
+
+! 3. Habilitar la traducción (PAT) hacia la interfaz pública
+ip nat inside source list 1 interface Ethernet0/0 overload
+
+! 4. Definir la interfaz EXTERNA (Hacia el ISP)
+interface Ethernet0/0
+ ip nat outside
+exit
+
+! 5. Definir las interfaces INTERNAS
+interface Ethernet0/1.50
+ ip nat inside
+exit
+interface Ethernet0/1.60
+ ip nat inside
+exit
+interface Ethernet0/1.70
+ ip nat inside
+exi
+interface Ethernet0/1.80
+ ip nat inside
+exit
+
+================================================
+VPN
+=================================================
+
+enable
+configure terminal
+
+! --- SEGURIDAD IPSEC ---
+crypto isakmp policy 10
+ encr aes 256
+ hash sha
+ authentication pre-share
+ group 14
+ lifetime 86400
+exit
+crypto isakmp key PRODUCTO3 address 0.0.0.0 0.0.0.0
+crypto ipsec transform-set TS_VPN esp-aes 256 esp-sha-hmac
+ mode transport
+exit
+crypto ipsec profile PERFIL_VPN
+ set transform-set TS_VPN
+exit
+
+! --- INTERFAZ TÚNEL SANTIAGO ---
+interface Tunnel0
+ description TUNEL DMVPN - SPOKE SANTIAGO
+ ip address 10.128.10.2 255.255.255.0
+ tunnel mode gre multipoint
+ tunnel source Ethernet0/0
+ 
+ ip nhrp network-id 100
+ ip nhrp authentication PRODUCTO3
+ 
+ ! Registrarse en el HUB (Capital)
+ ip nhrp nhs 10.128.10.1
+ ip nhrp map 10.128.10.1 4.0.0.2
+ ip nhrp map multicast 4.0.0.2
+ tunnel protection ipsec profile PERFIL_VPN
+ ip mtu 1400
+ ip tcp adjust-mss 1360
+ no shutdown
+exit
+
+configure terminal
+interface Ethernet0/1.50
+ ip helper-address 10.128.3.148
+interface Ethernet0/1.60
+ ip helper-address 10.128.3.148
+interface Ethernet0/1.70
+ ip helper-address 10.128.3.148
+end
+configure terminal
+interface Ethernet0/0
+ ip tcp adjust-mss 1360
+end
+configure terminal
+interface Ethernet0/1.80
+ ip tcp adjust-mss 1360
+end
+configure terminal
+interface Ethernet0/1.80
+ ip mtu 1400
+ ip tcp adjust-mss 1360
+exit
+end
+clear ip nat translation *
+
+
+
+------------------------------------------------
+OSPF SANTIAGO
+--------------------------------------------
+
+configure terminal
+interface Tunnel0
+ ip ospf network broadcast
+ ip ospf priority 0
+exit
+
+router ospf 1
+ router-id 2.2.2.2
+ network 10.128.10.0 0.0.0.255 area 0
+ network 10.128.3.64 0.0.0.31 area 1 
+ network 10.128.3.96 0.0.0.15 area 1
+ network 10.128.3.128 0.0.0.15 area 1
+ network 10.128.3.144 0.0.0.15 area 1
+exit

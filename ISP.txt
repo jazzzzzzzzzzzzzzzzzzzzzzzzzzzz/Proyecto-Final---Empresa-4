@@ -1,0 +1,71 @@
+ISP:
+
+enable
+configure terminal
+no ip domain-lookup
+hostname ISP
+interface Ethernet0/0
+ description HACIA CAPITAL
+ ip address 4.0.0.1 255.255.255.252
+ no shutdown
+exit
+interface Ethernet0/1
+ description HACIA SANTIAGO
+ ip address 4.0.0.5 255.255.255.252
+ no shutdown
+exit
+interface Ethernet0/2
+ description HACIA ROMANA
+ ip address 4.0.0.9 255.255.255.252
+ no shutdown
+exit
+interface Ethernet0/3
+ description HACIA PUERTO PLATA
+ ip address 4.0.0.13 255.255.255.252
+ no shutdown
+exit
+interface Ethernet1/0
+ description HACIA BARAHONA
+ ip address 4.0.0.17 255.255.255.252
+ no shutdown
+exit
+interface Ethernet1/1
+ description HACIA WEB SERVER
+ ip address 4.0.0.21 255.255.255.252
+ no shutdown
+exit
+
+configure terminal
+! Entrar a la interfaz que se conecta a la Nube 
+interface Ethernet1/2
+ description SALIDA AL INTERNET REAL
+ ip address dhcp
+ ip nat outside
+ no shutdown
+exit
+! 1. Crear una lista de acceso que permita TODO el tráfico del proyecto salir a internet
+access-list 100 permit ip any any
+
+! 2. Habilitar la traducción (PAT) en la interfaz conectada a la nube (e1/2)
+ip nat inside source list 100 interface Ethernet1/2 overload
+
+! 3. Declarar TODAS las interfaces internas del ISP como "nat inside"
+interface Ethernet0/0
+ ip nat inside
+exit
+interface Ethernet0/1
+ ip nat inside
+exit
+interface Ethernet0/2
+ ip nat inside
+exit
+interface Ethernet0/3
+ ip nat inside
+exit
+interface Ethernet1/0
+ ip nat inside
+exit
+interface Ethernet1/1
+ ip nat inside
+exit
+

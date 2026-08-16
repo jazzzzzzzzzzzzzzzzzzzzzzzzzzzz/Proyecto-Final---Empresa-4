@@ -1,0 +1,148 @@
+Router Capital:
+enable
+configure terminal
+no ip domain-lookup
+hostname CAPITAL
+enable secret PRODUCTO
+username admin privilege 15 secret PRODUCTO
+ip domain-name NEXIUM.COM
+crypto key generate rsa modulus 1024
+ip ssh version 2
+line vty 0 4
+ login local
+ transport input ssh
+exit
+line con 0
+ login local
+exit
+interface Ethernet0/0
+ description HACIA ISP
+ ip address 4.0.0.2 255.255.255.252
+ no shutdown
+exit
+interface Ethernet0/1
+ description TRONCAL HACIA R-SW1
+ no shutdown
+exit
+interface Ethernet0/1.10
+ description VLAN 10 - Gerencia General
+ encapsulation dot1Q 10
+ ip address 10.128.0.1 255.255.255.0
+exit
+interface Ethernet0/1.20
+ description VLAN 20 - Recursos Humanos
+ encapsulation dot1Q 20
+ ip address 10.128.2.129 255.255.255.128
+exit
+interface Ethernet0/1.30
+ description VLAN 30 - Operaciones
+ encapsulation dot1Q 30
+ ip address 10.128.1.129 255.255.255.128
+exit
+interface Ethernet0/1.40
+ description VLAN 40 - Tecnologia-TI
+ encapsulation dot1Q 40
+ ip address 10.128.1.1 255.255.255.128
+exit
+end
+write memory
+---------------------------------------------------------------------------------------
+DHCP capital:
+
+configure terminal
+
+ip dhcp excluded-address 10.128.0.1 10.128.0.20
+ip dhcp excluded-address 10.128.2.129 10.128.2.140
+ip dhcp excluded-address 10.128.1.129 10.128.1.140
+ip dhcp excluded-address 10.128.1.1 10.128.1.12
+ip dhcp pool VLAN10-GERENCIA
+ network 10.128.0.0 255.255.255.0
+ default-router 10.128.0.1
+ dns-server 8.8.8.8
+exit
+ip dhcp pool VLAN20-Recursos-humanos
+ network 10.128.2.128 255.255.255.128
+ default-router 10.128.2.129
+ dns-server 8.8.8.8
+exit
+
+ip dhcp pool VLAN30-OPERACIONES
+ network 10.128.1.128 255.255.255.128
+ default-router 10.128.1.129
+ dns-server 8.8.8.8
+exit
+ip dhcp pool VLAN40-TECNOLOGIA-TI
+ network 10.128.1.0 255.255.255.128
+ default-router 10.128.1.1
+ dns-server 8.8.8.8
+exit
+end
+write memory
+enable
+configure terminal
+
+! ========================================================
+! 1. CONFIGURACIÓN DE SEGURIDAD IPSEC (ISAKMP / IKEv1)
+! ========================================================
+
+! Política de Fase 1 (Negociación compatible con imágenes IOL)
+crypto isakmp policy 10
+ encr aes 256
+ hash sha
+ authentication pre-share
+ group 14
+ lifetime 86400
+exit
+! Contraseña de la VPN compartida actualizada
+cr
+! Política de Fase 2 (Transform Set para el cifrado de los datos)
+crypto ipsec transform-set TS_VPN esp-aes 256 esp-sha-hmac
+ mode transport
+exit
+! Perfil IPSec para amarrar la seguridad al túnel
+crypto ipsec profile PERFIL_VPN
+ set transform-set TS_VPN
+exit
+
+ ========================================================
+ 2. CONFIGURACIÓN DE LA INTERFAZ TÚNEL (HUB DMVPN)
+
+interface Tunnel0
+ description TUNEL DMVPN - HUB CENTRAL
+ ip address 10.128.10.1 255.255.255.0
+ 
+tunnel mode gre multipoint
+tunnel source Ethernet0/0
+ ip nhrp network-id 100
+ ip nhrp authentication PRODUCTO3
+ ip nhrp map multicast dynamic
+ tunnel protection ipsec profile PERFIL_VPN
+ ip mtu 1400
+ ip tcp adjust-mss 1360
+ no shutdown
+exit
+
+end
+write memory
+
+
+=======================================
+OSPF CAPITAL
+
+configure terminal
+interface Tunnel0
+ ip ospf network broadcast
+ ip ospf priority 255
+exit
+
+router ospf 1
+ router-id 1.1.1.1
+ ! Red del Túnel (Backbone)
+ network 10.128.10.0 0.0.0.255 area 0
+ 
+ ! Redes locales de Capital
+ network 10.128.0.0 0.0.0.255 area 0
+ network 10.128.1.0 0.0.0.127 area 0
+ network 10.128.1.128 0.0.0.127 area 0
+ network 10.128.2.128 0.0.0.127 area 0
+exit

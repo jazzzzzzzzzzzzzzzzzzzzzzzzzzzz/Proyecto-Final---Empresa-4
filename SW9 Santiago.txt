@@ -1,0 +1,88 @@
+SW9 - SEDE SANTIAGO
+
+enable
+configure terminal
+no ip domain-lookup
+hostname SW9
+enable secret PRODUCTO
+username admin privilege 15 secret PRODUCTO
+ip domain-name NEXIUM.COM
+crypto key generate rsa modulus 1024
+ip ssh version 2
+line vty 0 4
+ login local
+ transport input ssh
+exit
+line con 0
+ login local
+exit
+
+! Creación de la base de datos de VLANs
+vlan 50
+ name CENTRO_DE_DATOS
+vlan 60
+ name VENTAS
+vlan 70
+ name ADMINISTRACION
+vlan 80
+ name SERVIDORES
+exit
+
+! IP de Gestión en VLAN 80
+interface Vlan80
+ description GESTION_SW9
+ ip address 10.128.3.147 255.255.255.240
+ no shutdown
+exit
+ip default-gateway 10.128.3.145
+
+
+! EtherChannel (LACP) hacia SW6 (Asignación puerto por puerto)
+interface Ethernet0/1
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ channel-group 1 mode active
+exit
+interface Ethernet0/0
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ channel-group 1 mode active
+exit
+interface Ethernet1/2
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ channel-group 1 mode active
+exit
+configure terminal
+
+! Asignar VPC25 a Ventas (VLAN 60)
+interface Ethernet0/3
+ description HACIA_VPC25_VENTAS
+ switchport mode access
+ switchport access vlan 60
+ spanning-tree portfast
+exit
+
+! Asignar VPC27 a Administración (VLAN 70)
+interface Ethernet1/0
+ description HACIA_VPC27_ADMINISTRACION
+ switchport mode access
+ switchport access vlan 70
+ spanning-tree portfast
+exit
+
+! Asignar VPC28 al Centro de Datos (VLAN 50)
+interface Ethernet1/1
+ description HACIA_VPC28_DATACENTER
+ switchport mode access
+ switchport access vlan 50
+ spanning-tree portfast
+exit
+
+! Asignar el nodo de Servicios (VLAN 80)
+interface Ethernet0/2
+ description HACIA_NODO_SERVICIOS
+ switchport mode access
+ switchport access vlan 80
+ spanning-tree portfast
+exit

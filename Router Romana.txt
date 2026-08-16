@@ -1,0 +1,128 @@
+ROUTER ROMANA
+
+configure terminal
+enable secret PRODUCTO
+username admin privilege 15 secret PRODUCTO
+ip domain-name NEXIUM.COM
+crypto key generate rsa modulus 1024
+ip ssh version 2
+line vty 0 4
+ login local
+ transport input ssh
+exit
+line con 0
+ login local
+end
+
+configure terminal
+no ip domain-lookup
+hostname ROMANA
+interface Ethernet0/0
+ description HACIA ISP
+ ip address 4.0.0.10 255.255.255.252
+ no shutdown
+exit
+interface Ethernet0/1
+ description ENLACE TRONCAL HACIA SW7
+ no shutdown
+exit
+interface Ethernet0/1.90
+ description VLAN 90 - Operaciones
+ encapsulation dot1Q 90
+ ip address 10.128.3.1 255.255.255.192
+exi
+interface Ethernet0/1.100
+ description VLAN 100 - Comercio
+ encapsulation dot1Q 100
+ ip address 10.128.2.1 255.255.255.128
+exi
+interface Ethernet0/1.110
+ description VLAN 110 - Tecnología-TI
+ encapsulation dot1Q 110
+ ip address 10.128.3.113 255.255.255.240
+exit
+
+configure terminal
+ip dhcp excluded-address 10.128.3.1 10.128.3.3
+! Excluir IP del gateway en VLAN 100
+ip dhcp excluded-address 10.128.2.1
+! Excluir IP del gateway en VLAN 110
+ip dhcp excluded-address 10.128.3.113
+
+! 2. CREAR POOLS POR DEPARTAMENTO
+! Pool VLAN 90 (Operaciones)
+ip dhcp pool POOL_OPERACIONES
+ network 10.128.3.0 255.255.255.192
+ default-router 10.128.3.1
+exit
+
+! Pool VLAN 100 (Comercial)
+ip dhcp pool POOL_COMERCIAL
+ network 10.128.2.0 255.255.255.128
+ default-router 10.128.2.1
+exit
+
+! Pool VLAN 110 (Tecnología-TI)
+ip dhcp pool POOL_TECNOLOGIA
+ network 10.128.3.112 255.255.255.240
+ default-router 10.128.3.113
+exit
+configure terminal
+ip route 0.0.0.0 0.0.0.0 4.0.0.9
+end
+===================================
+VPN
+=====================================
+
+enable
+configure terminal
+
+! --- SEGURIDAD IPSEC ---
+crypto isakmp policy 10
+ encr aes 256
+ hash sha
+ authentication pre-share
+ group 14
+ lifetime 86400
+exit
+crypto isakmp key PRODUCTO3 address 0.0.0.0 0.0.0.0
+crypto ipsec transform-set TS_VPN esp-aes 256 esp-sha-hmac
+ mode transport
+exit
+crypto ipsec profile PERFIL_VPN
+ set transform-set TS_VPN
+exit
+
+! --- INTERFAZ TÚNEL LA ROMANA ---
+interface Tunnel0
+ description TUNEL DMVPN - SPOKE ROMANA
+ ip address 10.128.10.3 255.255.255.0
+ tunnel mode gre multipoint
+ tunnel source Ethernet0/0
+ 
+ ip nhrp network-id 100
+ ip nhrp authentication PRODUCTO3
+ ip nhrp nhs 10.128.10.1
+ ip nhrp map 10.128.10.1 4.0.0.2
+ ip nhrp map multicast 4.0.0.2
+ 
+ tunnel protection ipsec profile PERFIL_VPN
+ ip mtu 1400
+ ip tcp adjust-mss 1360
+ no shutdown
+exit
+============================
+OSPF ROMANA
+
+configure terminal
+interface Tunnel0
+ ip ospf network broadcast
+ ip ospf priority 0
+exit
+router ospf 1
+ router-id 3.3.3.3
+ network 10.128.10.0 0.0.0.255 area 0
+ network 10.128.2.0 0.0.0.127 area 2
+ network 10.128.3.0 0.0.0.63 area 2
+ network 10.128.3.112 0.0.0.15 area 2
+exit

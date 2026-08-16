@@ -1,0 +1,112 @@
+Router BARAHONA
+enable
+configure terminal
+no ip domain-lookup
+hostname BARAHONA
+enable secret PRODUCTO
+username admin privilege 15 secret PRODUCTO
+ip domain-name NEXIUM.COM
+crypto key generate rsa modulus 1024
+ip ssh version 2
+line vty 0 4
+ login local
+ transport input ssh
+exit
+line con 0
+ login local
+exit
+
+! --- ENLACE WAN ---
+interface Ethernet0/0
+ description HACIA ISP
+ ip address 4.0.0.18 255.255.255.252
+ no shutdown
+exit
+
+! --- ENLACE LAN ---
+interface Ethernet0/1
+ description TRONCAL HACIA SW12
+ no shutdown
+exit
+
+! Subinterfaz VLAN 130
+interface Ethernet0/1.130
+ encapsulation dot1Q 130
+ ip address 10.128.3.169 255.255.255.248
+ ip nat inside
+exit
+
+! --- CONFIGURACIÓN DHCP ---
+! Excluimos el Gateway (.169) y las IPs de los Switches (.170 y .171)
+ip dhcp excluded-address 10.128.3.169 10.128.3.171
+
+ip dhcp pool VLAN130-LAN
+ network 10.128.3.168 255.255.255.248
+ default-router 10.128.3.169
+ dns-server 8.8.8.8
+exit
+
+! --- ENRUTAMIENTO Y NAT ---
+! Ruta por defecto apuntando a la IP del ISP para Barahona (.17)
+ip route 0.0.0.0 0.0.0.0 4.0.0.17
+
+! ACL para permitir la subred /29 de Barahona
+access-list 1 permit 10.128.3.168 0.0.0.7
+ip nat inside source list 1 interface Ethernet0/0 overload
+interface Ethernet0/0
+ ip nat outside
+exit
+=======================
+VPN
+====================
+enable
+configure terminal
+! --- SEGURIDAD IPSEC ---
+crypto isakmp policy 10
+ encr aes 256
+ hash sha
+ authentication pre-share
+ group 14
+ lifetime 86400
+exit
+crypto isakmp key PRODUCTO3 address 0.0.0.0 0.0.0.0
+crypto ipsec transform-set TS_VPN esp-aes 256 esp-sha-hmac
+ mode transport
+exit
+crypto ipsec profile PERFIL_VPN
+ set transform-set TS_VPN
+exit
+
+! --- INTERFAZ TÚNEL BARAHONA ---
+interface Tunnel0
+ description TUNEL DMVPN - SPOKE BARAHONA
+ ip address 10.128.10.5 255.255.255.0
+ tunnel mode gre multipoint
+ tunnel source Ethernet0/0
+ ip nhrp network-id 100
+ ip nhrp authentication PRODUCTO3
+ ip nhrp nhs 10.128.10.1
+ ip nhrp map 10.128.10.1 4.0.0.2
+ ip nhrp map multicast 4.0.0.2
+ 
+ tunnel protection ipsec profile PERFIL_VPN
+ ip mtu 1400
+ ip tcp adjust-mss 1360
+ no shutdown
+exit
+
+================================
+OSPF BARAHONA
+===============================
+configure terminal
+
+interface Tunnel0
+ ip ospf network broadcast
+ ip ospf priority 0
+exit
+router ospf 1
+ router-id 5.5.5.5
+ network 10.128.10.0 0.0.0.255 area 0
+ network 10.128.3.168 0.0.0.7 area 4
+exit
+---------------------------------------------------------------------------------------------------

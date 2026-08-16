@@ -1,0 +1,72 @@
+SW11
+
+enable
+configure terminal
+no ip domain-lookup
+hostname SW11
+enable secret PRODUCTO
+username admin privilege 15 secret PRODUCTO
+ip domain-name NEXIUM.COM
+crypto key generate rsa modulus 1024
+ip ssh version 2
+line vty 0 4
+ login local
+ transport input ssh
+exit
+line con 0
+ login local
+exit
+vlan 120
+ name LAN
+exit
+
+! Configurar los puertos e0/0 y e0/1 como Troncales desde SW10
+interface range Ethernet0/0-1
+ description ENLACES REDUNDANTES DESDE SW10
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ switchport trunk allowed vlan 120
+ no shutdown
+exit
+
+! Configurar los puertos e0/2 y e0/3 como Acceso para las VPCs
+interface range Ethernet0/2-3
+ description PUERTOS DE ACCESO PARA HOSTS
+ switchport mode access
+ switchport access vlan 120
+ spanning-tree portfast
+ no shutdown
+exit
+
+! Interfaz de Gestión
+interface Vlan120
+ description GESTION
+ ip address 10.128.3.163 255.255.255.248
+ no shutdown
+exit
+ip default-gateway 10.128.3.161
+---
+configure terminal
+! Protección Global
+ip dhcp snooping vlan 120
+ip dhcp snooping
+no ip dhcp snooping information option
+ip arp inspection vlan 120
+
+! Puertos (Hacia SW10)
+interface range Ethernet0/0-1
+ ip dhcp snooping trust
+ ip arp inspection trust
+exit
+
+! Puertos de Acceso (VPC33 y VPC34)
+interface range Ethernet0/2-3
+ switchport mode access
+ switchport nonegotiate
+ spanning-tree bpduguard enable
+ switchport port-security
+ switchport port-security maximum 2
+ switchport port-security mac-address sticky
+ switchport port-security violation restrict
+exit
+

@@ -1,0 +1,92 @@
+SW8 (ROMANA)
+
+enable
+configure terminal
+no ip domain-lookup
+hostname SW8
+enable secret PRODUCTO
+username admin privilege 15 secret PRODUCTO
+ip domain-name NEXIUM.COM
+crypto key generate rsa modulus 1024
+ip ssh version 2
+line vty 0 4
+ login local
+ transport input ssh
+exit
+line con 0
+ login local
+exit
+
+! 1. Creación de las VLANs
+vlan 90
+ name OPERACIONES
+vlan 100
+ name COMERCIAL
+vlan 110
+ name TECNOLOGIA-TI
+exit
+
+! 2. Dirección IP de Gestión (VLAN 90)
+interface Vlan90
+ description GESTION_SW8
+ ip address 10.128.3.3 255.255.255.192
+ no shutdown
+exit
+ip default-gateway 10.128.3.1
+
+! 3. EtherChannel (LACP) hacia SW7
+interface range Ethernet0/0 - 2
+ description LACP_HACIA_SW7
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ channel-group 1 mode active
+exit
+
+
+
+! Asignar VPC29 a Operaciones (VLAN 90)
+interface Ethernet0/3
+ description HACIA_VPC29_OPERACIONES
+ switchport mode access
+ switchport access vlan 90
+ spanning-tree portfast
+exit
+
+! Asignar VPC26 a Comercial (VLAN 100)
+interface Ethernet1/0
+ description HACIA_VPC26_COMERCIAL
+ switchport mode access
+ switchport access vlan 100
+ spanning-tree portfast
+exit
+
+! Asignar VPC30 a Tecnología-TI (VLAN 110)
+interface Ethernet1/1
+ description HACIA_VPC30_TECNOLOGIA
+ switchport mode access
+ switchport access vlan 110
+ spanning-tree portfast
+exit
+------------
+SEGURIDAD
+--------------
+configure terminal
+
+! 1. Encender seguridad global para las VLANs correctas
+ip dhcp snooping vlan 90,100,110
+ip dhcp snooping
+no ip dhcp snooping information option
+ip arp inspection vlan 90,100,110
+
+! 2. Confiar exclusivamente en el enlace lógico hacia SW7
+interface Port-channel1
+ ip dhcp snooping trust
+ ip arp inspection trust
+exit
+
+! 3. Encender Port-Security y protección STP en las PCs
+interface range Ethernet0/3 , Ethernet1/0-1
+ switchport port-security
+ switchport port-security mac-address sticky
+ spanning-tree bpduguard enable
+exit

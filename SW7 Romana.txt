@@ -1,0 +1,51 @@
+SW7 (ROMANA)
+
+configure terminal
+enable secret PRODUCTO
+username admin privilege 15 secret PRODUCTO
+ip domain-name NEXIUM.COM
+crypto key generate rsa modulus 1024
+ip ssh version 2
+line vty 0 4
+ login local
+ transport input ssh
+exit
+line con 0
+ login local
+and
+configure terminal
+no ip domain-lookup
+hostname SW7
+
+! 1. Creación de las VLANs
+vlan 90
+ name OPERACIONES
+vlan 100
+ name COMERCIAL
+vlan 110
+ name TECNOLOGIA-TI
+exit
+
+! 2. Dirección IP de Gestión (VLAN 90)
+interface Vlan90
+ description GESTION_SW7
+ ip address 10.128.3.2 255.255.255.192
+ no shutdown
+exit
+ip default-gateway 10.128.3.1
+
+! 3. Enlace Troncal hacia el Router ROMANA
+interface Ethernet0/0
+ description TRONCAL_HACIA_ROUTER_ROMANA
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+exit
+
+! 4. EtherChannel (LACP) hacia SW8
+interface range Ethernet0/1 - 3
+ description LACP_HACIA_SW8
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ channel-group 1 mode active
+exit
+
